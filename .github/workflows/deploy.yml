@@ -1,8 +1,9 @@
-name: Exercice 2 — Qualité du code et tests automatisés
+name: Exercice 3 — Secrets et sécurité de l'image
 
 on:
   push:
-    branches: [main, exo-1-docker, exo-2-tests]
+    branches: [main, 'exo-*']
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -15,6 +16,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Scan repository for sensitive patterns
+        run: |
+          echo "Recherche de secrets en clair dans le dépôt..."
+          SENSITIVE=$(grep -RInE --exclude-dir=.git --exclude-dir=docs --exclude='*.md' --exclude='*.png' --exclude='*.jpg' --exclude='*.jpeg' --exclude='*.gif' '(API_KEY|authtoken|password|secret|SECRET|TOKEN)[[:space:]]*[:=]' . | grep -v '{{ secrets\.' | grep -v 'secrets\.' || true)
+          if [ -n "$SENSITIVE" ]; then
+            echo "Secrets ou valeurs sensibles détectés :"
+            echo "$SENSITIVE"
+            exit 1
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -34,8 +45,31 @@ jobs:
         run: |
           python3 -m pytest -q
 
-  build-deploy-expose:
+  security:
     needs: quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker image for security scan
+        run: |
+          docker build --pull -t flask-app:security .
+
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin latest
+          trivy --version
+
+      - name: Scan container image for CRITICAL CVEs
+        run: |
+          trivy image --exit-code 1 --severity CRITICAL --ignore-unfixed flask-app:security
+
+  ngrok:
+    needs: [quality, security]
     runs-on: ubuntu-latest
 
     steps:
@@ -86,42 +120,26 @@ jobs:
 
       - name: Create Ngrok tunnel & Wait 120s
         run: |
-          # 1. Configuration sécurisée du token (via secret GitHub)
           /tmp/ngrok config add-authtoken "${{ secrets.NGROK_AUTHTOKEN }}" --config /tmp/ngrok.yml
-
-          # 2. Lancement de Ngrok en arrière-plan dans CE step
           echo "Démarrage du tunnel Ngrok..."
           /tmp/ngrok http 5000 --config /tmp/ngrok.yml --log=stdout > /tmp/ngrok.log 2>&1 &
-
-          # 3. On laisse 5 secondes à Ngrok pour s'initialiser
           sleep 5
-
-          # 4. Récupération de l'URL publique depuis l'API locale de l'agent Ngrok
           NGROK_URL=$(curl -s http://localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url')
-
           if [ "$NGROK_URL" = "null" ] || [ -z "$NGROK_URL" ]; then
             echo "❌ Erreur critique : Impossible de récupérer l'URL Ngrok."
             echo "=== LOGS NGROK ==="
             cat /tmp/ngrok.log
             exit 1
           fi
-
-          # 5. Affichage de l'URL dans les logs (Critère de validation)
           echo "=========================================================="
           echo "🚀 APPLICATION FLASK DISPONIBLE EN LIGNE :"
           echo "🔗 URL : ${NGROK_URL}"
           echo "=========================================================="
-
-          # BONUS : Génération d'un Badge / Job Summary cliquable sur GitHub !
           echo "### 🚀 URL de Démo éphémère (Active 2 min)" >> $GITHUB_STEP_SUMMARY
           echo "L'application a été déployée avec succès." >> $GITHUB_STEP_SUMMARY
           echo "- **Lien public** : [${NGROK_URL}](${NGROK_URL})" >> $GITHUB_STEP_SUMMARY
           echo "- **Temps restant** : Le tunnel s'arrêtera automatiquement à la fin du step." >> $GITHUB_STEP_SUMMARY
-
-          # 6. On maintient le tunnel ouvert pendant environ 120 secondes (Cahier des charges)
           echo "⏳ Compte à rebour de 120 secondes démarré. Vous pouvez tester le lien..."
           sleep 120
-
-          # 7. Arrêt propre du processus à la fin du temps imparti
           echo "🛑 Temps écoulé ! Fermeture propre du tunnel."
           kill $(pgrep ngrok) || true
