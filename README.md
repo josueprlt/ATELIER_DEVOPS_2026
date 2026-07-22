@@ -80,6 +80,38 @@ Un mini-serveur Flask de quelques lignes :
 
 ---
 
+## Récupérer l'image construite (Exercice 4)
+
+Une fois l'exercice 4 complété, l'image est **publiée automatiquement** sur GitHub Container Registry (GHCR) à chaque push sur `main`.
+
+### Pour récupérer et lancer l'image :
+
+```bash
+# Remplacez <owner> et <repo> par vos valeurs réelles
+docker pull ghcr.io/<owner>/<repo>:latest
+docker run -d -p 5000:5000 ghcr.io/<owner>/<repo>:latest
+
+# Puis testez sur http://localhost:5000
+```
+
+### Tags disponibles :
+
+- `latest` — Mis à jour à chaque push sur `main`
+- `sha-<short>` — Tag immuable par commit (premiers 7 caractères du SHA)
+- `pr-<numéro>` — Tag créé lors d'une Pull Request
+- `<branche>` — Tag pour chaque branche
+
+### Pour vérifier l'image publiquement :
+
+1. Allez sur votre dépôt GitHub
+2. Cliquez sur l'onglet **Packages** (à droite)
+3. Cliquez sur l'image et ses tags
+4. **Package settings** → **Change visibility** → `Public` (si l'image doit être accessible sans authentification)
+
+Sinon, depuis n'importe quelle machine, vous pouvez tirer l'image si elle est publique ou en vous authentifiant avec un token GitHub.
+
+---
+
 ## Démarrer
 
 1. **Fork** ce dépôt sur votre compte GitHub (pas un clone — un *fork*).
