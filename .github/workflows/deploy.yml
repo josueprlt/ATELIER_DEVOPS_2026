@@ -65,6 +65,8 @@ jobs:
           trivy --version
 
       - name: Scan container image for CRITICAL CVEs
+        env:
+          TRIVY_DISABLE_VEX_NOTICE: '1'
         run: |
           trivy image --exit-code 1 --severity CRITICAL --ignore-unfixed flask-app:security
 
